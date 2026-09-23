@@ -28,7 +28,7 @@
 \usepackage[colorlinks=true,linkcolor=black,anchorcolor=black,citecolor=black,filecolor=black,menucolor=black,runcolor=black,urlcolor=black]{hyperref}
 \usepackage{cleveref}
 \usepackage[square,numbers,sort&compress]{natbib}
-\bibliographystyle{plain}
+\bibliographystyle{unsrtnat}
 \usepackage{appendix}
 \usepackage{enumitem}
 \usepackage{amsthm,thmtools,xcolor}
@@ -40,7 +40,7 @@
 
 \input{Configuration_files/config}
 
-\renewcommand{\title}{Behavioral Evaluation of Discrete Image Tokenizers}
+\renewcommand{\title}{Discrete Image Tokenizers under Perturbations and Distribution Shift}
 \renewcommand{\author}{Farzin Nasiri Safarzadeh}
 \newcommand{\course}{Mathematical Engineering - Ingegneria Matematica}
 \newcommand{\advisor}{Prof. Matteo Matteucci}
@@ -55,77 +55,43 @@
 
 \input{Configuration_files/title_page}
 
-\section{Motivation and Scope}
+\section{Introduction}
 \label{sec:motivation}
 
-Autoregressive image generation relies on a discrete tokenizer to convert an image into a sequence of codebook indices. The transformer sees only this sequence: any information discarded, destabilized, or spatially redistributed by the tokenizer becomes a constraint on the generative model that follows. Tokenizers are nevertheless selected primarily through reconstruction quality. That baseline is necessary, but it does not reveal whether nearby images receive stable codes, whether a local intervention remains local, or whether the codebook is used consistently outside the training distribution.
+Autoregressive image generation relies on a discrete tokenizer to convert an image into a sequence of codebook indices. The transformer sees only this sequence, so information lost or changed by the tokenizer constrains the generative model. Tokenizers are usually compared by reconstruction quality, yet similar reconstruction scores can hide different representations. A small image perturbation may change many codes, and a local edit may affect distant positions. These properties matter to a model that learns from the token sequence.
 
-This thesis evaluates discrete image tokenizers as behavioral components rather than only as compression modules. The comparison concerns two public tokenizers used in autoregressive visual generation: the tokenizer released with \vqgan{} \cite{esser2021taming} and the tokenizer released with \llamagen{} \cite{sun2024llamagen}. Both map a $256\times256$ image to a $16\times16$ token grid with a nominal codebook of 16,384 entries. Holding these interface dimensions fixed makes it possible to compare reconstruction, stability, spatial response, and off-distribution usage without conflating them with sequence length or vocabulary size.
+This thesis studies the robustness properties of discrete image tokenizers. It focuses on \vqgan{}~\cite{esser2021taming} and \llamagen{}~\cite{sun2024llamagen}, comparing their reconstruction quality, code stability, spatial response, and behavior under distribution shift. Both turn a $256\times256$ image into a $16\times16$ token grid with a nominal vocabulary of 16,384 codes. Their common interface lets us examine possible behavioral differences without attributing them to sequence length or vocabulary size.
 
-The study is organized around five research questions:
-\begin{enumerate}[leftmargin=*,label=\textbf{RQ\arabic*:},itemsep=2pt,topsep=3pt]
-    \item How much information does each tokenizer preserve, and how fully does it use its codebook?
-    \item How stable are token assignments under global image perturbations?
-    \item Does a local image-space perturbation produce a local encoder response?
-    \item Does a local token-space edit produce a local decoder response?
-    \item How do reconstruction quality and code usage change under dataset shift?
-\end{enumerate}
+We first measure reconstruction quality and codebook usage on clean images (RQ1). This establishes a baseline for the perturbation experiments.
 
-The central distinction is between fidelity and behavior. Fidelity asks whether the decoded image resembles the input. Behavioral probes ask how the discrete representation changes when the input, the token grid, or the data distribution changes. The result is not a single ranking criterion. It is a profile of properties that matter for a tokenizer placed before an autoregressive model.
+We then ask how much of a global image perturbation reaches the token grid and decoded image (RQ2). Although the encoder--decoder bottleneck compresses the input, it is unclear how much noise it filters.
+
+The next two questions concern locality. We measure whether an image patch perturbation changes tokens outside that region (RQ3), then edit tokens directly and measure the decoder's response beyond the edited area (RQ4).
+
+Finally, we compare reconstruction and code use across datasets (RQ5). This tests whether the codebook behaves similarly when the input distribution differs from the training data.
 
 \section{Experimental Design}
 \label{sec:design}
 
-\subsection{Tokenizers and reference data}
-
-The \vqgan{} tokenizer uses a 256-dimensional codebook and a perceptual--adversarial training objective. The \llamagen{} tokenizer uses eight-dimensional, $\ell_2$-normalized code vectors and was designed for next-token image generation. The experiments use the released checkpoints rather than retraining either model. This preserves the behavior of the systems as they are distributed, but it also means that architectural and training differences cannot be isolated causally.
+We evaluate the released \vqgan{} and \llamagen{} checkpoints, running inference with controlled perturbations rather than retraining either tokenizer.
 
 The in-distribution reference is the 50,000-image \imagenet{} validation set \cite{deng2009imagenet}. Distribution-shift experiments add ImageNet-V2 \cite{recht2019imagenet}, ImageNet-Sketch \cite{wang2019learning}, ObjectNet \cite{barbu2019objectnet}, BloodMNIST and OrganAMNIST from MedMNIST v2 \cite{yang2023medmnist}, and RVL-CDIP document images \cite{harley2015rvlcdip}. These sets span resampling shift, drawing style, viewpoint and background bias, biomedical imagery, and scanned documents.
 
-\begin{table}[H]
-\centering
-\caption{Common tokenizer interface and evaluation data.}
-\label{tab:setup}
-\small
-\setlength{\tabcolsep}{2.5pt}
-\begin{tabular}{@{}lrr@{}}
-\toprule
-\textbf{Item} & \textbf{\llamagen{}} & \textbf{\vqgan{}} \\
-\midrule
-Input resolution & $256\times256$ & $256\times256$ \\
-Token grid & $16\times16$ & $16\times16$ \\
-Codebook size & 16,384 & 16,384 \\
-Code dimension & 8 & 256 \\
-\midrule
-\multicolumn{3}{@{}l}{\textbf{Dataset sizes}} \\
-ImageNet / ImageNet-V2 & \multicolumn{2}{r}{50,000 / 10,000} \\
-Sketch / ObjectNet & \multicolumn{2}{r}{50,889 / 50,273} \\
-Blood / Organ / RVL & \multicolumn{2}{r}{17,092 / 57,187 / 39,996} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Measurements and interventions}
-
-Reconstruction is measured with PSNR, SSIM, LPIPS, and FID. PSNR and SSIM emphasize pixel and structural agreement; LPIPS measures perceptual distance; FID compares the distributions of reference and reconstructed images. FID is interpreted only within the same dataset because its scale depends on the reference distribution. The baseline figure retains four supporting set-level diagnostics from the evaluator: spatial FID (sFID), feature-space precision and recall, and Inception Score. They respectively describe spatial distribution match, fidelity and coverage of the reference feature manifold, and classifier confidence combined with predicted-class diversity; they are treated as secondary diagnostics rather than substitutes for paired reconstruction metrics.
-
-Code usage is computed from all assignments in a dataset. An entry is active if it appears at least once. To separate isolated assignments from sustained use, an effective-active threshold of $10^{-6}$ of all assignments is also reported; on \imagenet{}, this corresponds to at least 13 occurrences among 12.8 million tokens. Usage concentration is summarized by perplexity and by the mass assigned to the 10, 100, and 500 most frequent codes.
-
-Three controlled interventions complement the baseline. First, isotropic Gaussian noise is added to the whole image and token flips are measured against the clean encoding. Second, noise is restricted to an $8\times8$ region of the $16\times16$ token grid and token changes are split into inside- and outside-patch regions. The far field contains token cells at Manhattan distance at least six from the patch. Third, selected tokens are replaced using embedding-space relations. Decoder response is the channel-averaged root-mean-square pixel change relative to the clean reconstruction; its inside and outside means, $\Delta_{\mathrm{in}}$ and $\Delta_{\mathrm{out}}$, define the decoder leakage ratio $\lambda_{\mathrm{dec}}=\Delta_{\mathrm{out}}/(\Delta_{\mathrm{in}}+\varepsilon)$. For distribution shift, all datasets pass through the same frozen tokenizer and preprocessing pipeline; the resulting frequency distributions are compared with Jensen--Shannon divergence (JSD), active-set retention, perplexity ratios, and top-$k$ concentration.
+We report PSNR, SSIM, and LPIPS for paired reconstructions, and FID for distributional similarity within each dataset. For code use, we report the number of active entries, perplexity, and frequency concentration. The following sections introduce each intervention with its results.
 
 \section{Reconstruction and Code Use (RQ1)}
 \label{sec:rq1}
 
-On \imagenet{}, \llamagen{} reconstructs more faithfully than \vqgan{} on every reported metric: PSNR is 20.79 rather than 19.65, SSIM is 0.558 rather than 0.489, LPIPS is 0.228 rather than 0.286, and FID is 2.19 rather than 5.06. The margins are not interchangeable---each metric emphasizes a different aspect of fidelity---but their agreement establishes a consistent baseline advantage for \llamagen{}.
+On \imagenet{}, \llamagen{} reconstructs more faithfully than \vqgan{} on the four metrics shown in Figure~\ref{fig:rq1}: PSNR is 20.79 rather than 19.65, SSIM is 0.558 rather than 0.489, LPIPS is 0.228 rather than 0.286, and FID is 2.19 rather than 5.06. Their agreement establishes a consistent baseline advantage for \llamagen{}.
 
-The two tokenizers reach this result with very different codebook usage. \llamagen{} activates all 16,384 entries on \imagenet{}, with 16,384 effectively active entries and perplexity 16,179. \vqgan{} activates 972 entries, of which 971 pass the effective threshold, with perplexity 910. Thus, about 94\% of the nominal \vqgan{} vocabulary is inactive for this checkpoint and dataset. Its top 500 entries account for 66.5\% of all assignments, compared with 4.6\% for \llamagen{}. The difference is therefore not merely whether an index appears: \vqgan{} concentrates repeated use in a much smaller vocabulary, while \llamagen{} distributes assignments across almost the entire codebook.
+The two tokenizers reach this result with very different codebook usage. \llamagen{} activates all 16,384 entries on \imagenet{} and has perplexity 16,179. \vqgan{} activates 972 entries, with perplexity 910. Thus, about 94\% of the nominal \vqgan{} vocabulary is inactive for this checkpoint and dataset. Its top 500 entries account for 66.5\% of all assignments, compared with 4.6\% for \llamagen{}. \vqgan{} concentrates repeated use in a much smaller vocabulary, while \llamagen{} distributes assignments across almost the entire codebook.
 
 Equal nominal codebook size therefore does not imply equal empirical capacity. The released checkpoints expose the same index range, but their active vocabularies differ by more than an order of magnitude. Reconstruction fidelity and codebook use must be reported together.
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=0.94\textwidth]{rq1_reconstruction_metrics.png}
-    \caption{Reconstruction metrics on the \imagenet{} validation set. Error bars show the standard deviation of per-image metrics; FID is a dataset-level quantity.}
+    \includegraphics[width=0.90\textwidth,trim=0 232bp 0 0,clip]{rq1_reconstruction_metrics.png}
+    \caption{PSNR, SSIM, LPIPS, and FID on the \imagenet{} validation set. Error bars show the standard deviation of per-image metrics; FID is a dataset-level quantity.}
     \label{fig:rq1}
 \end{figure*}
 
@@ -140,7 +106,7 @@ Noise also compresses the usage distribution. \llamagen{} perplexity falls from 
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=0.92\textwidth]{rq2_token_flip_vs_sigma.png}
+    \includegraphics[width=0.76\textwidth]{rq2_token_flip_vs_sigma.png}
     \caption{Mean token-flip rate under global Gaussian noise. Error bars summarize variation across images.}
     \label{fig:rq2}
 \end{figure*}
@@ -150,7 +116,7 @@ Discrete token identity is therefore much less stable than decoded appearance. T
 \section{Encoder Locality (RQ3)}
 \label{sec:rq3}
 
-The encoder-locality probe applies noise only inside an image patch and measures where token assignments change. The main $8\times8$ token-space patch covers one quarter of the grid. A perfectly local encoder would alter only token cells whose receptive fields overlap that patch. Neither checkpoint behaves this way. At the lowest noise level, $\sigma=0.1$, the mean far-field flip rate is 17.4\% for \vqgan{} and 17.8\% for \llamagen{}. At $\sigma=0.25$, outside-patch flip rates reach 44.1\% and 42.8\%; at $\sigma=0.5$, they reach 52.1\% and 50.5\%. Replacing the patch with a constant masked region produces outside rates of 56.3\% and 49.5\%.
+The encoder-locality experiment applies noise only inside an image patch and measures where token assignments change. The main $8\times8$ token-space patch covers one quarter of the grid. A perfectly local encoder would alter only token cells whose receptive fields overlap that patch. Neither checkpoint behaves this way. At the lowest noise level, $\sigma=0.1$, the mean far-field flip rate is 17.4\% for \vqgan{} and 17.8\% for \llamagen{}. At $\sigma=0.25$, outside-patch flip rates reach 44.1\% and 42.8\%; at $\sigma=0.5$, they reach 52.1\% and 50.5\%. Replacing the patch with a constant masked region produces outside rates of 56.3\% and 49.5\%.
 
 \begin{figure*}[t]
     \centering
@@ -204,7 +170,7 @@ The distribution-shift study therefore changes the interpretation of ``active co
 \section{Limitations}
 \label{sec:limitations}
 
-The experiments compare one released checkpoint per tokenizer. Differences therefore combine architecture, latent dimension, normalization, losses, training data, and optimization; the thesis measures deployed behavior but does not identify a single causal mechanism. Raw token-flip rates are also not a calibrated distance across quantizers, because their codebook geometries differ.
+The experiments compare one released checkpoint per tokenizer without retraining. Differences therefore combine architecture, latent dimension, normalization, losses, training data, and optimization; the thesis measures deployed behavior but does not identify a single causal mechanism. Raw token-flip rates are also not a calibrated distance across quantizers, because their codebook geometries differ.
 
 All datasets pass through a common $256\times256$ preprocessing pipeline. This supports controlled comparison, but resizing and cropping can distort medical, document, or atypically framed images. Aggregate metrics do not assign semantics to individual codes, and FID is sensitive to dataset size and feature-domain mismatch. The spatial probes use selected perturbations, masks, and replacement relations rather than an exhaustive intervention space. Finally, the work evaluates tokenizer outputs and reconstructions, not the quality of a downstream autoregressive model trained on those tokens.
 
