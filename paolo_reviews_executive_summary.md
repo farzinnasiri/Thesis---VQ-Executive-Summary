@@ -11,7 +11,7 @@ Scope: Paolo's 23 active review threads on `executive_summary.tex` in the Overle
 
   Needed change [R001]: Match the title used in the main thesis.
   Status: ✅ Addressed
-  Change made: Set the title to “Discrete Image Tokenizers under Perturbations and Distribution Shift.”
+  Change made: Matched the main thesis title, now “An Analysis of Discrete Image Tokenizers under Perturbations and Distribution Shift.”
 
 - Anchor: Motivation and Scope — section heading
   Time: 18 September, 11:26 am
