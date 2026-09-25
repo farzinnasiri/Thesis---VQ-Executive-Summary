@@ -98,9 +98,9 @@ Equal nominal codebook size therefore does not imply equal empirical capacity. T
 \section{Global Robustness (RQ2)}
 \label{sec:rq2}
 
-Global Gaussian noise reveals that high reconstruction quality does not imply stable discrete assignments. With images represented in $[0,1]$, a standard deviation of $\sigma=0.1$ flips 79.5\% of \llamagen{} tokens and 75.1\% of \vqgan{} tokens. At $\sigma=0.2$, the rates rise to 91.0\% and 89.0\%; at $\sigma=0.5$, both exceed 97\%. Because the two quantizers use different latent geometries, these raw rates describe checkpoint behavior rather than a calibrated cross-model robustness scale. They nevertheless show that both representations cross code boundaries frequently under visually modest global changes.
+Global Gaussian noise reveals frequent changes in discrete assignments. Noise standard deviations are specified in the internal $[-1,1]$ image range: $\sigma=0.1$ (equivalent to 0.05 in $[0,1]$ before clipping) flips 79.5\% of \llamagen{} tokens and 75.1\% of \vqgan{} tokens. At $\sigma=0.2$, the rates rise to 91.0\% and 89.0\%; at $\sigma=0.5$, both exceed 97\%. Because the two quantizers use different latent geometries, these rates describe checkpoint behavior rather than a calibrated cross-model robustness ranking.
 
-The reconstructed images degrade more gradually than the token grids. At $\sigma=0.5$, PSNR against the clean reconstruction remains 16.22 for \llamagen{} and 14.90 for \vqgan{}. Many index changes therefore map to decoder outputs that remain perceptually related. Token equality is a stricter notion than image-level stability.
+At $\sigma=0.5$, PSNR of the noisy-input reconstruction against the \emph{original clean image} is 16.22 dB for \llamagen{} and 14.90 dB for \vqgan{}. Selected outputs remain recognizable. This PSNR is not a comparison between clean and noisy reconstructions, so it does not quantify how much the decoded images changed when tokens flipped.
 
 Noise also compresses the usage distribution. \llamagen{} perplexity falls from 16,179 to 6,434 between the clean condition and $\sigma=0.5$, while \vqgan{} falls from 910 to 560. Over the same range, top-100 mass rises from 0.012 to 0.115 for \llamagen{} and from 0.165 to 0.388 for \vqgan{}. Global corruption does not simply randomize the representation; it makes both tokenizers rely more heavily on a smaller subset of codes.
 
@@ -111,7 +111,7 @@ Noise also compresses the usage distribution. \llamagen{} perplexity falls from 
     \label{fig:rq2}
 \end{figure*}
 
-Discrete token identity is therefore much less stable than decoded appearance. The perturbations also induce systematic concentration rather than uniform code replacement. A tokenizer used for autoregressive modeling should be assessed both at the index level and after decoding.
+The measured token identities change frequently under noise, while the reconstruction metric answers a separate question about fidelity to the original image. The perturbations also induce concentration rather than uniform code replacement. A tokenizer used for autoregressive modeling should be assessed both at the index level and after decoding.
 
 \section{Encoder Locality (RQ3)}
 \label{sec:rq3}
@@ -157,7 +157,7 @@ This near-perfect overlap is not evidence that the distributions are unchanged. 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.96\textwidth]{rq5_distribution_shift.png}
-    \caption{Global code-usage shift relative to \imagenet{}. Active vocabularies are largely retained, while frequency divergence and concentration increase with domain distance.}
+    \caption{Global code-usage shift relative to \imagenet{}. Active vocabularies are largely retained, while frequency divergence and concentration vary across the tested datasets.}
     \label{fig:rq5}
 \end{figure*}
 
@@ -170,20 +170,20 @@ The distribution-shift study therefore changes the interpretation of ``active co
 \section{Limitations}
 \label{sec:limitations}
 
-The experiments compare one released checkpoint per tokenizer without retraining. Differences therefore combine architecture, latent dimension, normalization, losses, training data, and optimization; the thesis measures deployed behavior but does not identify a single causal mechanism. Raw token-flip rates are also not a calibrated distance across quantizers, because their codebook geometries differ.
+The experiments compare one released checkpoint per tokenizer without retraining. Both use a VQGAN-style encoder--quantizer--decoder backbone, but differ in codebook dimension, normalization, training recipe, and implementation. The thesis measures checkpoint behavior but does not identify a single causal mechanism. Raw token-flip rates are not a calibrated distance across quantizers, because their codebook geometries differ.
 
-All datasets pass through a common $256\times256$ preprocessing pipeline. This supports controlled comparison, but resizing and cropping can distort medical, document, or atypically framed images. Aggregate metrics do not assign semantics to individual codes, and FID is sensitive to dataset size and feature-domain mismatch. The spatial probes use selected perturbations, masks, and replacement relations rather than an exhaustive intervention space. Finally, the work evaluates tokenizer outputs and reconstructions, not the quality of a downstream autoregressive model trained on those tokens.
+All datasets are processed to $256\times256$, but the two exporters use different resize filters. Resizing and cropping can distort medical, document, or atypically framed images. Reconstruction scores across datasets also reflect differences in image content, and positional-entropy estimates are sensitive to unequal sample sizes. Aggregate metrics do not assign semantics to individual codes, and FID is sensitive to dataset size and feature-domain mismatch. Finally, the work evaluates tokenizer outputs and reconstructions, not the quality of a downstream autoregressive model trained on those tokens.
 
 The claims are consequently limited to the two checkpoints under the stated protocols. The experiments do not establish that one architectural choice alone causes the observed behavior, nor that the same ordering must hold for every tokenizer or downstream task.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-Across the five research questions, the evidence yields five findings. First, \llamagen{} reconstructs \imagenet{} more faithfully and uses essentially its full codebook, while the evaluated \vqgan{} checkpoint operates with about 972 of 16,384 entries. Second, modest global noise flips most tokens in both models, even though decoded images degrade more gradually. Third, local image perturbations change token assignments well outside the perturbed patch. Fourth, local token edits affect pixels outside the corresponding image region, although \llamagen{} tolerates disruptive replacements better. Fifth, distribution shift usually preserves the active vocabulary but changes its frequency profile, with progressively stronger concentration for sketches, biomedical images, and documents.
+Across the five research questions, the evidence yields five findings. First, \llamagen{} reconstructs \imagenet{} more faithfully and uses essentially its full codebook, while the evaluated \vqgan{} checkpoint operates with about 972 of 16,384 entries. Second, the tested global noise flips most tokens in both models; fidelity to the original image is a separate measure. Third, local image perturbations change token assignments well outside the perturbed patch. Fourth, local token edits affect pixels outside the corresponding image region. Fifth, the shifted datasets largely preserve the active vocabulary but change its frequency profile, with stronger concentration on sketches, biomedical images, and documents.
 
 No single metric captures these properties. Reconstruction quality, codebook utilization, perturbation stability, spatial leakage, and distributional usage answer different questions. For autoregressive visual generation, the practical implication is that tokenizer selection should not stop at reconstruction scores. A tokenizer defines the sequence space in which the generative model must learn; its behavioral profile determines how stable, local, and statistically balanced that space is.
 
-Within the evaluated pair, \llamagen{} provides the stronger overall profile: better reconstruction, much broader codebook utilization, greater tolerance to decoder-side edits, and better reconstruction under distribution shift. The advantage does not mean that its discrete representation is stable or local in an absolute sense. Rather, the experiments expose both its relative strengths and the shared limitations of current discrete image tokenizers. The thesis contributes a reproducible evaluation framework for making those limitations measurable.
+Within the evaluated pair, \llamagen{} has better reconstruction on each tested dataset and much broader codebook utilization. Those results do not establish that it is more robust to distribution shift or that its token identities are more stable. The thesis provides a reproducible evaluation of distinct tokenizer properties and their limits.
 
 \bibliography{bibliography}
 
