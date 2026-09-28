@@ -60,15 +60,12 @@
 
 Autoregressive image generation relies on a discrete tokenizer to convert an image into a sequence of codebook indices. The transformer sees only this sequence, so information lost or changed by the tokenizer constrains the generative model. Tokenizers are usually compared by reconstruction quality, yet similar reconstruction scores can hide different representations. A small image perturbation may change many codes, and a local edit may affect distant positions. These properties matter to a model that learns from the token sequence.
 
-This thesis studies the robustness properties of discrete image tokenizers. It focuses on \vqgan{}~\cite{esser2021taming} and \llamagen{}~\cite{sun2024llamagen}, comparing their reconstruction quality, code stability, spatial response, and behavior under distribution shift. Both turn a $256\times256$ image into a $16\times16$ token grid with a nominal vocabulary of 16,384 codes. Their common interface lets us examine possible behavioral differences without attributing them to sequence length or vocabulary size.
+This thesis studies the robustness properties of discrete image tokenizers. It focuses on \vqgan{}~\cite{esser2021taming} and \llamagen{}~\cite{sun2024llamagen}, comparing their reconstruction quality, code stability, spatial response, and behavior under distribution shift. Both turn a $256\times256$ image into a $16\times16$ token grid with a nominal vocabulary of 16,384 codes. Their common interface holds sequence length and nominal vocabulary size fixed; empirical code use can still differ.
 
-We first measure reconstruction quality and codebook usage on clean images (RQ1). This establishes a baseline for the perturbation experiments.
-
-We then ask how much of a global image perturbation reaches the token grid and decoded image (RQ2). Although the encoder--decoder bottleneck compresses the input, it is unclear how much noise it filters.
-
-The next two questions concern locality. We measure whether an image patch perturbation changes tokens outside that region (RQ3), then edit tokens directly and measure the decoder's response beyond the edited area (RQ4).
-
-Finally, we compare reconstruction and code use across datasets (RQ5). This tests whether the codebook behaves similarly when the input distribution differs from the training data.
+The five research questions examine clean reconstruction and code use (RQ1),
+global noise (RQ2), token changes outside a perturbed image patch (RQ3),
+pixel changes outside a directly edited token patch (RQ4), and reconstruction
+and code use across datasets (RQ5).
 
 \section{Experimental Design}
 \label{sec:design}
@@ -82,11 +79,11 @@ We report PSNR, SSIM, and LPIPS for paired reconstructions, and FID for distribu
 \section{Reconstruction and Code Use (RQ1)}
 \label{sec:rq1}
 
-On \imagenet{}, \llamagen{} reconstructs more faithfully than \vqgan{} on the four metrics shown in Figure~\ref{fig:rq1}: PSNR is 20.79 rather than 19.65, SSIM is 0.558 rather than 0.489, LPIPS is 0.228 rather than 0.286, and FID is 2.19 rather than 5.06. Their agreement establishes a consistent baseline advantage for \llamagen{}.
+Under the recorded exporter settings, \llamagen{} has better \imagenet{} reconstruction scores on the four metrics in Figure~\ref{fig:rq1}: PSNR is 20.79 rather than 19.65 dB, SSIM is 0.558 rather than 0.489, LPIPS is 0.228 rather than 0.286, and FID is 2.19 rather than 5.06. A paired 50,000-image PSNR check gives a mean difference of 1.144 dB with a 95\% bootstrap interval of [1.140, 1.148] dB; this excludes uncertainty from preprocessing and checkpoint choice.
 
 The two tokenizers reach this result with very different codebook usage. \llamagen{} activates all 16,384 entries on \imagenet{} and has perplexity 16,179. \vqgan{} activates 972 entries, with perplexity 910. Thus, about 94\% of the nominal \vqgan{} vocabulary is inactive for this checkpoint and dataset. Its top 500 entries account for 66.5\% of all assignments, compared with 4.6\% for \llamagen{}. \vqgan{} concentrates repeated use in a much smaller vocabulary, while \llamagen{} distributes assignments across almost the entire codebook.
 
-Equal nominal codebook size therefore does not imply equal empirical capacity. The released checkpoints expose the same index range, but their active vocabularies differ by more than an order of magnitude. Reconstruction fidelity and codebook use must be reported together.
+Equal nominal codebook size therefore does not imply equally broad empirical use. The released checkpoints expose the same index range, but their active vocabularies differ by more than an order of magnitude. Reconstruction fidelity and codebook use must be reported together.
 
 \begin{figure*}[t]
     \centering
@@ -100,23 +97,25 @@ Equal nominal codebook size therefore does not imply equal empirical capacity. T
 
 Global Gaussian noise reveals frequent changes in discrete assignments. Noise standard deviations are specified in the internal $[-1,1]$ image range: $\sigma=0.1$ (equivalent to 0.05 in $[0,1]$ before clipping) flips 79.5\% of \llamagen{} tokens and 75.1\% of \vqgan{} tokens. At $\sigma=0.2$, the rates rise to 91.0\% and 89.0\%; at $\sigma=0.5$, both exceed 97\%. Because the two quantizers use different latent geometries, these rates describe checkpoint behavior rather than a calibrated cross-model robustness ranking.
 
-At $\sigma=0.5$, PSNR of the noisy-input reconstruction against the \emph{original clean image} is 16.22 dB for \llamagen{} and 14.90 dB for \vqgan{}. Selected outputs remain recognizable. This PSNR is not a comparison between clean and noisy reconstructions, so it does not quantify how much the decoded images changed when tokens flipped.
+At $\sigma=0.5$, PSNR of the noisy-input reconstruction against the \emph{original clean image} is 16.22 dB for \llamagen{} and 14.90 dB for \vqgan{}. That PSNR is not a comparison between clean and noisy reconstructions. In a separate fixed-seed sample of 2,000 saved image pairs, direct decoded RMSE is lower for \llamagen{} at each noise level despite its slightly higher token-flip fraction; the noise draws were not matched between checkpoints.
 
-Noise also compresses the usage distribution. \llamagen{} perplexity falls from 16,179 to 6,434 between the clean condition and $\sigma=0.5$, while \vqgan{} falls from 910 to 560. Over the same range, top-100 mass rises from 0.012 to 0.115 for \llamagen{} and from 0.165 to 0.388 for \vqgan{}. Global corruption does not simply randomize the representation; it makes both tokenizers rely more heavily on a smaller subset of codes.
+Noise also concentrates code use. Perplexity falls from 16,179 to 6,434 for \llamagen{} and from 910 to 560 for \vqgan{} between the clean condition and $\sigma=0.5$. Top-100 mass, the fraction of assignments to the 100 most frequent codes, rises from 0.012 to 0.115 and from 0.165 to 0.388, respectively.
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.76\textwidth]{rq2_token_flip_vs_sigma.png}
-    \caption{Mean token-flip rate under global Gaussian noise. Error bars summarize variation across images.}
+    \caption{Mean token-flip rate under global Gaussian noise, with $\sigma$ specified in the $[-1,1]$ image range. Error bars show one standard deviation across images.}
     \label{fig:rq2}
 \end{figure*}
 
-The measured token identities change frequently under noise, while the reconstruction metric answers a separate question about fidelity to the original image. The perturbations also induce concentration rather than uniform code replacement. A tokenizer used for autoregressive modeling should be assessed both at the index level and after decoding.
+The flip rates in Figure~\ref{fig:rq2} and sampled decoded RMSE order the checkpoints differently, so code changes cannot be treated as a calibrated image distance.
 
 \section{Encoder Locality (RQ3)}
 \label{sec:rq3}
 
-The encoder-locality experiment applies noise only inside an image patch and measures where token assignments change. The main $8\times8$ token-space patch covers one quarter of the grid. A perfectly local encoder would alter only token cells whose receptive fields overlap that patch. Neither checkpoint behaves this way. At the lowest noise level, $\sigma=0.1$, the mean far-field flip rate is 17.4\% for \vqgan{} and 17.8\% for \llamagen{}. At $\sigma=0.25$, outside-patch flip rates reach 44.1\% and 42.8\%; at $\sigma=0.5$, they reach 52.1\% and 50.5\%. Replacing the patch with a constant masked region produces outside rates of 56.3\% and 49.5\%.
+The encoder experiment applies noise to a $128\times128$ image patch corresponding to an $8\times8$ token block. A strictly block-local mapping would leave assignments outside that block unchanged. Figure~\ref{fig:rq3} shows outside-patch flip rates of 29.9\%, 44.1\%, and 52.1\% for \vqgan{}, and 30.2\%, 42.8\%, and 50.5\% for \llamagen{}, at $\sigma=0.1$, 0.25, and 0.5. These local-noise levels differ from the global sweep. Masking the patch instead gives outside rates of 56.3\% and 49.5\%.
+
+Far field denotes tokens at Manhattan distance at least six cells from the block. At $\sigma=0.1$, pooled far-field flip rates are 17.4\% for \vqgan{} and 17.8\% for \llamagen{}.
 
 \begin{figure*}[t]
     \centering
@@ -125,47 +124,45 @@ The encoder-locality experiment applies noise only inside an image patch and mea
     \label{fig:rq3}
 \end{figure*}
 
-The result is not explained by a one-cell boundary effect. The response extends beyond the perturbed region and remains visible in far-field summaries. Convolutional receptive fields, downsampling, normalization, and nearest-neighbor quantization can all contribute, but the experiment does not isolate their individual roles. What it establishes is the behavior of the released encoder--quantizer pipelines: a local change in the image is represented by a partly global change in token identity.
-
-A $16\times16$ index map preserves coarse layout, but an individual token cannot be assumed to depend only on its corresponding image patch. Local token attribution and localized conditioning methods should account for this encoder-side leakage.
+The response extends beyond a one-cell boundary band. Convolutions, attention, normalization, and quantization can contribute, but their roles are not isolated. The measurement establishes dependence beyond the corresponding token block, without claiming changes outside the encoder's actual receptive field.
 
 \section{Decoder Locality (RQ4)}
 \label{sec:rq4}
 
-The reverse intervention edits the token grid directly and measures where the decoded image changes. Replacement codes are selected from precomputed embedding-space relations: close alternatives test small moves in the codebook, while orthogonal, random, and farthest alternatives test increasingly disruptive substitutions. Edits cover controlled fractions of the grid, and image response is separated into the edited and unedited regions.
+The reverse intervention edits a token patch. Closest and farthest replacements minimize and maximize embedding distance; orthogonal replacement minimizes absolute cosine similarity. For \vqgan{}, these geometric rules use its ImageNet-active subset; random replacement draws from the full codebook. \llamagen{} uses the full codebook for all modes. The following fidelity metrics compare edited and clean reconstructions within the edited patch.
 
-At a 25\% edit fraction with the closest replacement mode, \llamagen{} obtains PSNR 20.36 and LPIPS 0.134, compared with 20.00 and 0.182 for \vqgan{}. For the farthest 75\% intervention, the gap becomes much larger: \llamagen{} reaches PSNR 7.74 and LPIPS 0.702, whereas \vqgan{} reaches PSNR 3.74 and LPIPS 0.790. The ordering agrees with the reconstruction baseline: \llamagen{} tolerates token substitutions better, especially when replacements are distant and numerous.
+At a 25\% edit fraction, closest replacement gives \llamagen{} PSNR 20.36 dB and LPIPS 0.134, versus 20.00 dB and 0.182 for \vqgan{}. Farthest replacement at the same fraction gives 7.74 dB and 0.702 versus 3.74 dB and 0.790 (Figure~\ref{fig:rq4}). These edits are not severity-matched across codebooks, so the ordering does not isolate decoder sensitivity.
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.94\textwidth]{rq4_decoder_fidelity.png}
-    \caption{Decoder-only edit fidelity at a 25\% edit fraction. Replacement geometry strongly affects the decoded response.}
+    \caption{Fidelity within the edited patch relative to the clean reconstruction, at a 25\% edit fraction.}
     \label{fig:rq4}
 \end{figure*}
 
-Decoder response is not confined to the edited cells. At a 25\% edit fraction, the median decoder leakage ratio $\lambda_{\mathrm{dec}}$ is 0.141 for \llamagen{} and 0.148 for \vqgan{} in the farthest mode; for \vqgan{}, even the closest mode reaches 0.263. The exact magnitude depends on the edit mask and replacement relation, but the qualitative result is stable: local token edits can have non-local image consequences.
+Decoder response extends outside the edited region. At 25\%, the mean outside response, measured as per-pixel RGB RMSE on $[0,1]$, ranges from 0.013 to 0.050 for \llamagen{} and 0.019 to 0.090 for \vqgan{} across edit modes. Closest replacement gives the smallest absolute outside response. A 500-image saved-output profile shows response declining with distance but still measurable 80--96 pixels from the boundary.
 
-Repeating the protocol on ImageNet-V2 produces nearly identical aggregate trends. Across modes, the largest LPIPS change is 0.0068, the largest absolute outside-response change is 0.0016, and PSNR remains within 0.17 dB. The decoder-side finding is therefore not an artifact of one \imagenet{} sample set. The encoder and decoder probes together reveal an asymmetric but consistent picture: spatial indexing is useful, yet neither direction of the tokenizer is strictly local.
+Repeating the protocol on ImageNet-V2 produces similar aggregate trends. Across modes and patch fractions, the largest LPIPS change is 0.0068 and the largest absolute outside-response change is 0.0016. At the 25\% fraction, patch PSNR differs by at most 0.17 dB. Encoder and decoder probes use different interventions and response metrics; both show effects beyond the edited region.
 
 \section{Distribution Shift (RQ5)}
 \label{sec:rq5}
 
-The final study asks whether a tokenizer uses the same discrete vocabulary when the image distribution changes. Active-set overlap alone suggests strong stability. \llamagen{} retains all \imagenet{}-active codes on ImageNet-V2, ImageNet-Sketch, ObjectNet, and OrganAMNIST, 98.4\% on BloodMNIST, and 99.4\% on RVL-CDIP. For \vqgan{}, the same 972 entries remain active on ImageNet-V2, ImageNet-Sketch, ObjectNet, and OrganAMNIST; retention is 99.4\% on BloodMNIST and 99.9\% on RVL-CDIP.
+The final study asks whether a tokenizer uses the same discrete vocabulary when the image distribution changes. \llamagen{} retains all \imagenet{}-active codes on ImageNet-V2 and 16,383 of 16,384 on ImageNet-Sketch, 98.4\% on BloodMNIST, and 99.4\% on RVL-CDIP. \vqgan{} retains all 972 entries on ImageNet-V2 and ImageNet-Sketch, 99.4\% on BloodMNIST, and 99.9\% on RVL-CDIP. A code counts as active after a single assignment, so this overlap alone does not establish stability.
 
-This near-perfect overlap is not evidence that the distributions are unchanged. Frequency-sensitive measures reveal a graded shift. For \llamagen{}, JSD from \imagenet{} is 0.0020 on ImageNet-V2, 0.0200 on ObjectNet, 0.1035 on OrganAMNIST, 0.1531 on ImageNet-Sketch, 0.2260 on BloodMNIST, and 0.2510 on RVL-CDIP. Its perplexity ratio relative to \imagenet{} falls from 0.995 on ImageNet-V2 to 0.230 on RVL-CDIP. \vqgan{} shows the same ordering at a lower effective vocabulary size: JSD ranges from 0.0004 on ImageNet-V2 to 0.1949 on RVL-CDIP, while the perplexity ratio falls from 1.001 to 0.325.
+Figure~\ref{fig:rq5} reports Jensen--Shannon divergence (JSD, in nats) and the perplexity ratio to each model's ImageNet baseline. For \llamagen{}, JSD is 0.0020 on ImageNet-V2, 0.1531 on ImageNet-Sketch, 0.2260 on BloodMNIST, and 0.2510 on RVL-CDIP. Its perplexity ratio falls from 0.995 to 0.230 across those datasets. \vqgan{} shows the same ordering: JSD ranges from 0.0004 to 0.1949, and the ratio falls from 1.001 to 0.325. JSD is descriptive; no sampling null calibrates small values or comparisons between vocabularies.
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.96\textwidth]{rq5_distribution_shift.png}
-    \caption{Global code-usage shift relative to \imagenet{}. Active vocabularies are largely retained, while frequency divergence and concentration vary across the tested datasets.}
+    \caption{Global code-usage shift relative to \imagenet{}. ObjectNet retains its identification border; OrganAMNIST is an incomplete export. These two collections are limited descriptive checks.}
     \label{fig:rq5}
 \end{figure*}
 
-Top-100 mass makes the concentration change concrete. From \imagenet{} to RVL-CDIP, it rises from 0.012 to 0.216 for \llamagen{} and from 0.165 to 0.548 for \vqgan{}. The off-distribution datasets do not generally activate a new vocabulary; they redistribute probability toward a smaller set of familiar codes.
+Reconstruction scores also depend on image content, so comparing their absolute values across datasets does not isolate the effect of a distribution shift. ObjectNet and OrganAMNIST remain in the reported results, but their retained border and missing images limit interpretation. The redistribution finding rests independently on ImageNet-Sketch, BloodMNIST, and RVL-CDIP.
 
-Reconstruction metrics must be read separately from these usage statistics. ImageNet-V2 and ObjectNet remain close to the reference baseline, whereas the medical and document datasets exhibit different pixel statistics and semantics. On OrganAMNIST, for example, both models obtain high PSNR and SSIM but poor FID: FID is 57.16 for \llamagen{} and 76.12 for \vqgan{}. High sample-wise fidelity can coexist with a poor match between reconstructed and reference feature distributions. Across every evaluated dataset, however, \llamagen{} retains the better FID and generally the better reconstruction metrics.
+Matching the ImageNet reference sample size largely removes the apparent ImageNet-V2 positional-entropy decrease. BloodMNIST and RVL-CDIP retain substantial decreases after the same check. Unequal-size estimates for the other datasets remain descriptive.
 
-The distribution-shift study therefore changes the interpretation of ``active code.'' A binary alive/dead count is useful for detecting collapse, as in the \vqgan{} baseline, but it is too coarse for shift analysis. Frequency divergence and concentration expose changes that active-set overlap does not.
+Frequency divergence and concentration expose changes that active-set overlap does not.
 
 \section{Limitations}
 \label{sec:limitations}
@@ -174,16 +171,18 @@ The experiments compare one released checkpoint per tokenizer without retraining
 
 All datasets are processed to $256\times256$, but the two exporters use different resize filters. Resizing and cropping can distort medical, document, or atypically framed images. Reconstruction scores across datasets also reflect differences in image content, and positional-entropy estimates are sensitive to unequal sample sizes. Aggregate metrics do not assign semantics to individual codes, and FID is sensitive to dataset size and feature-domain mismatch. Finally, the work evaluates tokenizer outputs and reconstructions, not the quality of a downstream autoregressive model trained on those tokens.
 
+The ObjectNet pipeline retained its source-image red border; its border-position effect cannot be attributed to object content. The OrganAMNIST export contains 57,187 images, omitting 1,643 official training images. The local \vqgan{} baseline differs from the published comparison by 0.35 dB PSNR and 0.07 FID, with the cause unisolated. Noise draws and patch locations were not matched between checkpoints; decoder edits also differ in severity. The global-noise sweep does not cover $\sigma<0.1$, and the saved-image decoder profile covers 500 images at one patch size.
+
 The claims are consequently limited to the two checkpoints under the stated protocols. The experiments do not establish that one architectural choice alone causes the observed behavior, nor that the same ordering must hold for every tokenizer or downstream task.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-Across the five research questions, the evidence yields five findings. First, \llamagen{} reconstructs \imagenet{} more faithfully and uses essentially its full codebook, while the evaluated \vqgan{} checkpoint operates with about 972 of 16,384 entries. Second, the tested global noise flips most tokens in both models; fidelity to the original image is a separate measure. Third, local image perturbations change token assignments well outside the perturbed patch. Fourth, local token edits affect pixels outside the corresponding image region. Fifth, the shifted datasets largely preserve the active vocabulary but change its frequency profile, with stronger concentration on sketches, biomedical images, and documents.
+Across the five research questions, the evidence yields five findings. First, \llamagen{} has better \imagenet{} reconstruction scores under the recorded settings and uses essentially its full codebook, while the evaluated \vqgan{} checkpoint uses about 972 entries. Second, the tested global noise flips most tokens in both models; fidelity to the original image is a separate measure. Third, local image perturbations change token assignments well outside the perturbed patch. Fourth, local token edits affect pixels outside the corresponding image region. Fifth, ImageNet-Sketch, BloodMNIST, and RVL-CDIP largely preserve the active vocabulary but change its frequency profile.
 
-No single metric captures these properties. Reconstruction quality, codebook utilization, perturbation stability, spatial leakage, and distributional usage answer different questions. For autoregressive visual generation, the practical implication is that tokenizer selection should not stop at reconstruction scores. A tokenizer defines the sequence space in which the generative model must learn; its behavioral profile determines how stable, local, and statistically balanced that space is.
+Reconstruction quality, codebook utilization, perturbation stability, spatial leakage, and distributional usage answer different questions. Tokenizer selection should therefore consider more than reconstruction scores. The consequences for autoregressive generation require a separate evaluation.
 
-Within the evaluated pair, \llamagen{} has better reconstruction on each tested dataset and much broader codebook utilization. Those results do not establish that it is more robust to distribution shift or that its token identities are more stable. The thesis provides a reproducible evaluation of distinct tokenizer properties and their limits.
+Better reconstruction and broader usage do not establish greater robustness to distribution shift. The code, analysis notebooks, supporting data, and reproduction instructions will be provided separately to the supervisor.
 
 \bibliography{bibliography}
 
