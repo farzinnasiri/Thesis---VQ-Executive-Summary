@@ -97,7 +97,7 @@ Equal nominal codebook size therefore does not imply equally broad empirical use
 
 Global Gaussian noise reveals frequent changes in discrete assignments. Noise standard deviations are specified in the internal $[-1,1]$ image range: $\sigma=0.1$ (equivalent to 0.05 in $[0,1]$ before clipping) flips 79.5\% of \llamagen{} tokens and 75.1\% of \vqgan{} tokens. At $\sigma=0.2$, the rates rise to 91.0\% and 89.0\%; at $\sigma=0.5$, both exceed 97\%. Because the two quantizers use different latent geometries, these rates describe checkpoint behavior rather than a calibrated cross-model robustness ranking.
 
-At $\sigma=0.5$, PSNR of the noisy-input reconstruction against the \emph{original clean image} is 16.22 dB for \llamagen{} and 14.90 dB for \vqgan{}. That PSNR is not a comparison between clean and noisy reconstructions. In a separate fixed-seed sample of 2,000 saved image pairs, direct decoded RMSE is lower for \llamagen{} at each noise level despite its slightly higher token-flip fraction; the noise draws were not matched between checkpoints.
+At $\sigma=0.5$, PSNR of the noisy-input reconstruction against the \emph{original clean image} is 16.22 dB for \llamagen{} and 14.90 dB for \vqgan{}. In a separate fixed-seed sample of 2,000 saved image pairs, direct decoded RMSE is lower for \llamagen{} at each noise level despite its slightly higher token-flip fraction.
 
 Noise also concentrates code use. Perplexity falls from 16,179 to 6,434 for \llamagen{} and from 910 to 560 for \vqgan{} between the clean condition and $\sigma=0.5$. Top-100 mass, the fraction of assignments to the 100 most frequent codes, rises from 0.012 to 0.115 and from 0.165 to 0.388, respectively.
 
@@ -154,35 +154,30 @@ Figure~\ref{fig:rq5} reports Jensen--Shannon divergence (JSD, in nats) and the p
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.96\textwidth]{rq5_distribution_shift.png}
-    \caption{Global code-usage shift relative to \imagenet{}. ObjectNet retains its identification border; OrganAMNIST is an incomplete export. These two collections are limited descriptive checks.}
+    \caption{Global code-usage shift relative to \imagenet{}. JSD is in nats and $R_P$ is the perplexity ratio to each tokenizer's ImageNet baseline. Asterisks mark the two exports described in Limitations.}
     \label{fig:rq5}
 \end{figure*}
 
-Reconstruction scores also depend on image content, so comparing their absolute values across datasets does not isolate the effect of a distribution shift. ObjectNet and OrganAMNIST remain in the reported results, but their retained border and missing images limit interpretation. The redistribution finding rests independently on ImageNet-Sketch, BloodMNIST, and RVL-CDIP.
+Reconstruction scores also depend on image content, so their absolute values across datasets do not measure the effect of distribution shift alone. The redistribution finding is evident in ImageNet-Sketch, BloodMNIST, and RVL-CDIP.
 
 Matching the ImageNet reference sample size largely removes the apparent ImageNet-V2 positional-entropy decrease. BloodMNIST and RVL-CDIP retain substantial decreases after the same check. Unequal-size estimates for the other datasets remain descriptive.
 
 Frequency divergence and concentration expose changes that active-set overlap does not.
 
+\newpage
 \section{Limitations}
 \label{sec:limitations}
 
-The experiments compare one released checkpoint per tokenizer without retraining. Both use a VQGAN-style encoder--quantizer--decoder backbone, but differ in codebook dimension, normalization, training recipe, and implementation. The thesis measures checkpoint behavior but does not identify a single causal mechanism. Raw token-flip rates are not a calibrated distance across quantizers, because their codebook geometries differ.
+The experiments compare one released checkpoint per tokenizer. Differences in training, codebook geometry, and preprocessing prevent attribution to a single design choice. Noise draws and patch locations were not matched across checkpoints.
 
-All datasets are processed to $256\times256$, but the two exporters use different resize filters. Resizing and cropping can distort medical, document, or atypically framed images. Reconstruction scores across datasets also reflect differences in image content, and positional-entropy estimates are sensitive to unequal sample sizes. Aggregate metrics do not assign semantics to individual codes, and FID is sensitive to dataset size and feature-domain mismatch. Finally, the work evaluates tokenizer outputs and reconstructions, not the quality of a downstream autoregressive model trained on those tokens.
-
-The ObjectNet pipeline retained its source-image red border; its border-position effect cannot be attributed to object content. The OrganAMNIST export contains 57,187 images, omitting 1,643 official training images. The local \vqgan{} baseline differs from the published comparison by 0.35 dB PSNR and 0.07 FID, with the cause unisolated. Noise draws and patch locations were not matched between checkpoints; decoder edits also differ in severity. The global-noise sweep does not cover $\sigma<0.1$, and the saved-image decoder profile covers 500 images at one patch size.
-
-The claims are consequently limited to the two checkpoints under the stated protocols. The experiments do not establish that one architectural choice alone causes the observed behavior, nor that the same ordering must hold for every tokenizer or downstream task.
+ObjectNet retained its red identification border; the local OrganAMNIST export omitted 1,643 official training images. Their results apply to those saved inputs. The study evaluates tokenizers and their reconstructions, without testing downstream autoregressive generation.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
 Across the five research questions, the evidence yields five findings. First, \llamagen{} has better \imagenet{} reconstruction scores under the recorded settings and uses essentially its full codebook, while the evaluated \vqgan{} checkpoint uses about 972 entries. Second, the tested global noise flips most tokens in both models; fidelity to the original image is a separate measure. Third, local image perturbations change token assignments well outside the perturbed patch. Fourth, local token edits affect pixels outside the corresponding image region. Fifth, ImageNet-Sketch, BloodMNIST, and RVL-CDIP largely preserve the active vocabulary but change its frequency profile.
 
-Reconstruction quality, codebook utilization, perturbation stability, spatial leakage, and distributional usage answer different questions. Tokenizer selection should therefore consider more than reconstruction scores. The consequences for autoregressive generation require a separate evaluation.
-
-Better reconstruction and broader usage do not establish greater robustness to distribution shift. The code, analysis notebooks, supporting data, and reproduction instructions will be provided separately to the supervisor.
+Reconstruction quality, codebook use, token stability, and spatial response answer different questions. The consequences for autoregressive generation require a separate evaluation. Despite their shared token grid and nominal vocabulary, these checkpoints produce very different code distributions, and both redistribute those codes under shift.
 
 \bibliography{bibliography}
 
